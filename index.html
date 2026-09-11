@@ -188,6 +188,7 @@
       <h2>⑥ 出庫する数量</h2>
       <div class="card" id="qty-item-label"></div>
       <input type="number" id="qty-input" min="1" step="1" inputmode="numeric" placeholder="数量">
+      <div class="small">送り先の工場の在庫も、自動で同じ数量だけ増えます（送り先に品目がない場合は新しく作ります）。</div>
       <button class="primary" id="ship-btn" onclick="confirmShip()">この内容で出庫する</button>
       <div id="qty-error" class="error"></div>
       <button class="ghost" onclick="show('step-item')">やめて戻る</button>
@@ -196,7 +197,7 @@
     <div id="step-result" class="hidden">
       <h2>結果</h2>
       <div id="result-box" class="card"></div>
-      <div class="small">受け取り側の在庫は、移動先の工場でZAICOアプリから入庫処理をしてください。</div>
+      <div class="small" id="result-note"></div>
       <button class="primary" onclick="resetToScan()">続けて次の品目を出庫する</button>
       <button class="ghost" onclick="resetAll()">別の作業者に交代する</button>
     </div>
@@ -451,8 +452,9 @@
 
     function showResult(res) {
       const box = document.getElementById('result-box');
-      box.className = 'card ' + (res.ok ? 'ok' : 'error');
+      box.className = 'card ' + (res.ok && !res.warn ? 'ok' : 'error');
       box.textContent = res.msg;
+      document.getElementById('result-note').textContent = res.note || '';
       show('step-result');
     }
 
