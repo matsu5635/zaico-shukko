@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZAICO 出庫</title>
+<style>
+  :root {
+    --bg: #121417;
+    --card: #1e2127;
+    --card-border: #2b2f36;
+    --text: #f0f0f0;
+    --sub: #9aa0a8;
+    --accent: #26c281;
+    --accent-dim: #1c3d31;
+    --danger: #e2574c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Hiragino Sans", "Yu Gothic", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 0 0 32px;
+  }
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    font-size: 17px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--card-border);
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 5;
+  }
+  .content { padding: 16px; }
+  h2 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--sub);
+    letter-spacing: .04em;
+    margin: 22px 0 10px;
+  }
+  button {
+    font-size: 15px;
+    padding: 12px 16px;
+    margin: 6px 0;
+    border-radius: 10px;
+    border: 1px solid var(--card-border);
+    background: var(--card);
+    color: var(--text);
+  }
+  button.primary {
+    background: var(--accent);
+    color: #08221a;
+    border: none;
+    font-weight: 700;
+    width: 100%;
+  }
+  button.ghost {
+    background: transparent;
+    color: var(--sub);
+    border: none;
+  }
+  button.tile {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    text-align: left;
+    padding: 16px;
+    margin-bottom: 10px;
+  }
+  button.tile .arrow { color: var(--sub); }
+  button.tile .sub { display: block; color: var(--sub); font-size: 13px; margin-top: 4px; }
+  button.tile .qty { font-weight: 700; color: var(--accent); white-space: nowrap; margin-left: 12px; }
+  button:disabled { opacity: .5; }
+
+  .card {
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin: 12px 0;
+    background: var(--card);
+  }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--card-border);
+    font-size: 15px;
+  }
+  .row:last-child { border-bottom: none; }
+  .row .label { color: var(--sub); font-size: 13px; }
+  .row .value { font-weight: 600; text-align: right; word-break: break-all; }
+
+  .pill {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  #reader-badge, #reader-product { width: 100%; border-radius: 14px; overflow: hidden; border: 1px solid var(--card-border); }
+
+  .error { color: var(--danger); white-space: pre-wrap; font-size: 14px; }
+  .ok { color: var(--accent); white-space: pre-wrap; font-size: 15px; font-weight: 600; }
+  .small { font-size: 12px; color: var(--sub); margin-top: 10px; }
+  .status { font-size: 14px; color: var(--accent); margin: 10px 0; }
+
+  input[type=number], input[type=text] {
+    font-size: 18px;
+    padding: 12px;
+    width: 100%;
+    border-radius: 10px;
+    border: 1px solid var(--card-border);
+    background: #0f1114;
+    color: var(--text);
+    margin: 8px 0;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+
+  <div class="topbar">
+    <span>ZAICO 出庫</span>
+    <span id="badge-mark" class="pill hidden">読み取り済み</span>
+  </div>
+
+  <div class="content">
+
+    <div id="step-badge" class="hidden">
+      <h2>① 自分のバッジ（QR）を読んでください</h2>
+      <div id="reader-badge"></div>
+      <button onclick="showManualBadge()">カメラを使わず入力する</button>
+      <div id="manual-badge-box" class="hidden">
+        <input type="text" id="manual-badge" placeholder="バッジのコード" autocomplete="off">
+        <button class="primary" onclick="onBadgeScanned(document.getElementById('manual-badge').value)">これで進む</button>
+      </div>
+    </div>
+
+    <div id="step-factory" class="hidden">
+      <h2>② 今どこの工場にいますか</h2>
+      <div id="factory-buttons">読み込み中…</div>
+    </div>
+
+    <div id="step-scan" class="hidden">
+      <h2>③ 品物のQRコードを読み取ってください</h2>
+      <div class="card">
+        <div class="row"><span class="label">工場</span><span class="value" id="from-factory-label"></span></div>
+      </div>
+      <a href="#" onclick="backToFactory();return false;">工場を変更する</a>
+      <div style="margin-top:12px;" id="reader-product"></div>
+      <div id="scan-status" class="status hidden">検索しています…</div>
+      <button onclick="showManualProduct()">カメラを使わず番号を入力する</button>
+      <div id="manual-product-box" class="hidden">
+        <input type="text" id="manual-product" placeholder="QRコードの値" autocomplete="off">
+        <button class="primary" onclick="onScan(document.getElementById('manual-product').value)">検索する</button>
+      </div>
+    </div>
+
+    <div id="step-choose" class="hidden">
+      <h2>④ 同じQRの品目が複数あります。出庫するものを選んでください</h2>
+      <div id="choose-buttons"></div>
+      <button onclick="backToScan()">別のQRを読み直す</button>
+    </div>
+
+    <div id="step-item" class="hidden">
+      <h2>④ 品目の確認</h2>
+      <div class="card" id="item-card"></div>
+      <button onclick="backToScan()">別のQRを読み直す</button>
+
+      <h2>⑤ どこの工場へ送りますか</h2>
+      <div id="to-buttons"></div>
+    </div>
+
+    <div id="step-qty" class="hidden">
+      <h2>⑥ 出庫する数量</h2>
+      <div class="card" id="qty-item-label"></div>
+      <input type="number" id="qty-input" min="1" step="1" inputmode="numeric" placeholder="数量">
+      <button class="primary" id="ship-btn" onclick="confirmShip()">この内容で出庫する</button>
+      <div id="qty-error" class="error"></div>
+      <button class="ghost" onclick="show('step-item')">やめて戻る</button>
+    </div>
+
+    <div id="step-result" class="hidden">
+      <h2>結果</h2>
+      <div id="result-box" class="card"></div>
+      <div class="small">受け取り側の在庫は、移動先の工場でZAICOアプリから入庫処理をしてください。</div>
+      <button class="primary" onclick="resetToScan()">続けて次の品目を出庫する</button>
+      <button class="ghost" onclick="resetAll()">別の作業者に交代する</button>
+    </div>
+
+  </div>
+
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script>
+    /* Apps Scriptを「ウェブアプリ」として公開したときのURL（.../exec） */
+    const API_URL = 'https://script.google.com/macros/s/AKfycby4fPD369fS5gT5r7NiyB8u3Ip3NZjSe3t_F3eBPDXwvFR49JJ4fkpEyctRC8b5xIBN/exec';
+
+    let workerToken = null;
+    let fromFactory = null;
+    let currentItem = null;
+    let toFactory = null;
+    let scanner = null;       // いま動いているカメラ
+    let scanHandled = false;  // 同じQRを何度も読んで二重に処理しないための目印
+    let factoryList = [];
+
+    /* ---------------- 起動 ---------------- */
+    show('step-badge');
+    startBadgeScan();
+
+    /* ---------------- APIを呼ぶ共通処理 ---------------- */
+    async function callApi(action, params) {
+      const body = Object.assign({ action: action }, params || {});
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // プリフライトを避けるためtext/plainで送る
+        body: JSON.stringify(body)
+      });
+      return res.json();
+    }
+
+    /* ---------------- カメラの開始・停止 ---------------- */
+    function stopScan() {
+      const s = scanner;
+      scanner = null;
+      if (!s) return Promise.resolve();
+      let p;
+      try { p = s.stop(); } catch (e) { p = Promise.resolve(); }
+      return Promise.resolve(p).catch(function () {}).then(function () {
+        try { s.clear(); } catch (e) {}
+      });
+    }
+
+    function startScan(elementId, onDecoded, failMsg) {
+      return stopScan().then(function () {
+        const box = document.getElementById(elementId);
+        box.innerHTML = '';
+        scanHandled = false;
+        const s = new Html5Qrcode(elementId);
+        scanner = s;
+        return s.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: 220 },
+          function (decodedText) {
+            if (scanHandled) return;
+            scanHandled = true;
+            onDecoded(decodedText);
+          }
+        ).catch(function () {
+          if (scanner === s) scanner = null;
+          box.innerHTML = '<div class="error">' + failMsg + '</div>';
+        });
+      });
+    }
+
+    /* ---------------- ① バッジを読む ---------------- */
+    function startBadgeScan() {
+      startScan('reader-badge', onBadgeScanned,
+        'カメラを使えませんでした。下の「入力する」からお続けください。');
+    }
+    function showManualBadge() {
+      stopScan();
+      document.getElementById('manual-badge-box').classList.remove('hidden');
+    }
+    function onBadgeScanned(token) {
+      token = String(token || '').trim();
+      if (!token) return;
+      stopScan();
+      workerToken = token;
+      document.getElementById('manual-badge').value = '';
+      document.getElementById('manual-badge-box').classList.add('hidden');
+      document.getElementById('badge-mark').classList.remove('hidden');
+      loadFactories();
+      show('step-factory');
+    }
+
+    /* ---------------- ② 工場選択 ---------------- */
+    function loadFactories() {
+      const box = document.getElementById('factory-buttons');
+      box.innerHTML = '読み込み中…';
+      callApi('listFactories', {}).then(function (res) {
+        if (!res.ok) { box.innerHTML = '<div class="error">' + escapeHtml(res.msg) + '</div>'; return; }
+        factoryList = res.factories;
+        box.innerHTML = '';
+        if (factoryList.length === 0) {
+          box.innerHTML = '<div class="error">工場の一覧が未設定です。管理者にご確認ください。</div>';
+          return;
+        }
+        factoryList.forEach(function (name) {
+          const b = document.createElement('button');
+          b.className = 'tile';
+          b.innerHTML = '<span>' + escapeHtml(name) + '</span><span class="arrow">›</span>';
+          b.onclick = function () { selectFromFactory(name); };
+          box.appendChild(b);
+        });
+      }).catch(function (err) {
+        box.innerHTML = '<div class="error">接続先に問題があります。設定を確認してください。（' + escapeHtml(err) + '）</div>';
+      });
+    }
+
+    function selectFromFactory(name) {
+      fromFactory = name;
+      document.getElementById('from-factory-label').textContent = name;
+      document.getElementById('manual-product-box').classList.add('hidden');
+      backToScan();
+    }
+    function backToFactory() { stopScan(); show('step-factory'); }
+
+    /* ---------------- ③ 品物のQR読み取り ---------------- */
+    function startProductScan() {
+      startScan('reader-product', onScan,
+        'カメラを使えませんでした。下の「番号を入力する」からお続けください。');
+    }
+    function showManualProduct() {
+      stopScan();
+      document.getElementById('manual-product-box').classList.remove('hidden');
+    }
+
+    function onScan(code) {
+      code = String(code || '').trim();
+      if (!code) return;
+      stopScan();
+      setSearching(true);
+      callApi('lookup', { workerToken: workerToken, code: code, factory: fromFactory }).then(function (res) {
+        setSearching(false);
+        if (!res.ok) {
+          alert(res.msg);
+          if (res.reason === 'badToken') { resetAll(); } else { backToScan(); }
+          return;
+        }
+        if (res.items.length === 1) {
+          showItem(res.items[0]);
+        } else {
+          showChoices(res.items);
+        }
+      }).catch(function (err) {
+        setSearching(false);
+        alert('通信に失敗しました：' + err);
+        backToScan();
+      });
+    }
+    function setSearching(on) {
+      document.getElementById('scan-status').classList.toggle('hidden', !on);
+    }
+    function backToScan() {
+      document.getElementById('manual-product').value = '';
+      show('step-scan');
+      startProductScan();
+    }
+
+    /* ---------------- ④ 同じQRの品目が複数あるときの選択 ---------------- */
+    function showChoices(items) {
+      const box = document.getElementById('choose-buttons');
+      box.innerHTML = '';
+      items.forEach(function (it) {
+        const b = document.createElement('button');
+        b.className = 'tile';
+        b.innerHTML =
+          '<span>' + escapeHtml(it.title) +
+            '<span class="sub">' + (it.lot ? 'Lot ' + escapeHtml(it.lot) + '　' : '') + escapeHtml(placeText(it)) + '</span></span>' +
+          '<span class="qty">在庫 ' + escapeHtml(it.quantity) + '</span>';
+        b.onclick = function () { showItem(it); };
+        box.appendChild(b);
+      });
+      show('step-choose');
+    }
+    function placeText(it) {
+      return [it.warehouse, it.place].filter(function (s) { return s; }).join(' / ') || '置き場所の登録なし';
+    }
+
+    /* ---------------- ④ 品目表示・⑤ 移動先選択 ---------------- */
+    function showItem(item) {
+      currentItem = item;
+
+      document.getElementById('item-card').innerHTML =
+        row('製品コード', item.productCode) +
+        row('製品名', item.title) +
+        row('入目', item.iremono) +
+        row('Lot', item.lot) +
+        row('置き場所', placeText(item)) +
+        row('在庫数（' + fromFactory + '）', item.quantity);
+
+      const toBox = document.getElementById('to-buttons');
+      toBox.innerHTML = '';
+      factoryList.filter(function (n) { return n !== fromFactory; }).forEach(function (name) {
+        const b = document.createElement('button');
+        b.className = 'tile';
+        b.innerHTML = '<span>' + escapeHtml(name) + ' へ送る</span><span class="arrow">›</span>';
+        b.onclick = function () { selectToFactory(name); };
+        toBox.appendChild(b);
+      });
+
+      show('step-item');
+    }
+
+    function selectToFactory(name) {
+      toFactory = name;
+      document.getElementById('qty-item-label').innerHTML =
+        row('品目', currentItem.title) +
+        row('出庫元', fromFactory) +
+        row('送り先', name) +
+        row('在庫数（' + fromFactory + '）', currentItem.quantity);
+      document.getElementById('qty-input').value = '';
+      document.getElementById('qty-error').textContent = '';
+      show('step-qty');
+    }
+
+    /* ---------------- ⑥ 数量入力・実行 ---------------- */
+    function confirmShip() {
+      const qty = Number(document.getElementById('qty-input').value);
+      const errBox = document.getElementById('qty-error');
+      errBox.textContent = '';
+      if (!(qty > 0)) { errBox.textContent = '数量を入力してください。'; return; }
+      if (qty > currentItem.quantity) {
+        errBox.textContent = '在庫（' + currentItem.quantity + '）より多い数量は出庫できません。';
+        return;
+      }
+      if (!confirm(currentItem.title + ' を ' + qty + '\n' + fromFactory + ' → ' + toFactory + '\nこの内容で出庫します。よろしいですか？')) {
+        return;
+      }
+      const btn = document.getElementById('ship-btn');
+      btn.disabled = true;
+      btn.textContent = '出庫しています…';
+      callApi('shipOut', {
+        workerToken: workerToken,
+        fromFactory: fromFactory,
+        toFactory: toFactory,
+        zaicoId: currentItem.zaicoId,
+        qty: qty
+      }).then(function (res) {
+        showResult(res);
+      }).catch(function (err) {
+        showResult({ ok: false, msg: '通信に失敗しました：' + err + '\nZAICOアプリで在庫数が変わっていないか確認してください。' });
+      }).then(function () {
+        btn.disabled = false;
+        btn.textContent = 'この内容で出庫する';
+      });
+    }
+
+    function showResult(res) {
+      const box = document.getElementById('result-box');
+      box.className = 'card ' + (res.ok ? 'ok' : 'error');
+      box.textContent = res.msg;
+      show('step-result');
+    }
+
+    function resetToScan() {
+      currentItem = null; toFactory = null;
+      backToScan();
+    }
+    function resetAll() {
+      stopScan();
+      workerToken = null; fromFactory = null; currentItem = null; toFactory = null;
+      document.getElementById('badge-mark').classList.add('hidden');
+      show('step-badge');
+      startBadgeScan();
+    }
+
+    /* ---------------- 共通 ---------------- */
+    function row(label, value) {
+      return '<div class="row"><span class="label">' + escapeHtml(label) + '</span><span class="value">' + escapeHtml(value == null ? '' : String(value)) + '</span></div>';
+    }
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function show(id) {
+      ['step-badge', 'step-factory', 'step-scan', 'step-choose', 'step-item', 'step-qty', 'step-result'].forEach(function (s) {
+        document.getElementById(s).classList.toggle('hidden', s !== id);
+      });
+    }
+  </script>
+</body>
+</html>
