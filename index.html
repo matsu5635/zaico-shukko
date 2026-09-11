@@ -14,6 +14,7 @@
     --accent: #26c281;
     --accent-dim: #1c3d31;
     --danger: #e2574c;
+    --warn: #f0ad4e;
   }
   * { box-sizing: border-box; }
   body {
@@ -36,6 +37,14 @@
     top: 0;
     background: var(--bg);
     z-index: 5;
+  }
+  .route-bar {
+    text-align: center;
+    padding: 10px 16px;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--accent);
+    background: var(--accent-dim);
   }
   .content { padding: 16px; }
   h2 {
@@ -61,11 +70,18 @@
     font-weight: 700;
     width: 100%;
   }
+  button.danger {
+    background: transparent;
+    color: var(--danger);
+    border: 1px solid var(--danger);
+    width: 100%;
+  }
   button.ghost {
     background: transparent;
     color: var(--sub);
     border: none;
   }
+  button.wide { width: 100%; }
   button.tile {
     display: flex;
     align-items: center;
@@ -78,6 +94,7 @@
   button.tile .arrow { color: var(--sub); }
   button.tile .sub { display: block; color: var(--sub); font-size: 13px; margin-top: 4px; }
   button.tile .qty { font-weight: 700; color: var(--accent); white-space: nowrap; margin-left: 12px; }
+  button.tile.canceled { opacity: .5; }
   button:disabled { opacity: .5; }
 
   .card {
@@ -109,6 +126,17 @@
     font-weight: 700;
   }
 
+  .announce {
+    text-align: center;
+    border: 2px solid var(--accent);
+    border-radius: 14px;
+    padding: 18px 12px;
+    margin: 12px 0;
+  }
+  .announce.danger { border-color: var(--danger); }
+  .announce .big { font-size: 26px; font-weight: 800; letter-spacing: .02em; }
+  .announce .mid { font-size: 17px; font-weight: 700; margin-top: 6px; }
+
   #reader-badge, #reader-product { width: 100%; border-radius: 14px; overflow: hidden; border: 1px solid var(--card-border); }
 
   .error { color: var(--danger); white-space: pre-wrap; font-size: 14px; }
@@ -136,6 +164,7 @@
     <span>ZAICO 出庫</span>
     <span id="badge-mark" class="pill hidden">読み取り済み</span>
   </div>
+  <div class="route-bar" id="route-bar">読み込み中…</div>
 
   <div class="content">
 
@@ -149,57 +178,70 @@
       </div>
     </div>
 
-    <div id="step-factory" class="hidden">
-      <h2>② 今どこの工場にいますか</h2>
-      <div id="factory-buttons">読み込み中…</div>
-    </div>
-
     <div id="step-scan" class="hidden">
-      <h2>③ 品物のQRコードを読み取ってください</h2>
-      <div class="card">
-        <div class="row"><span class="label">工場</span><span class="value" id="from-factory-label"></span></div>
-      </div>
-      <a href="#" onclick="backToFactory();return false;">工場を変更する</a>
-      <div style="margin-top:12px;" id="reader-product"></div>
+      <h2>② 移動する品物のQRコードを読み取ってください</h2>
+      <div id="reader-product"></div>
       <div id="scan-status" class="status hidden">検索しています…</div>
       <button onclick="showManualProduct()">カメラを使わず番号を入力する</button>
       <div id="manual-product-box" class="hidden">
         <input type="text" id="manual-product" placeholder="QRコードの値" autocomplete="off">
         <button class="primary" onclick="onScan(document.getElementById('manual-product').value)">検索する</button>
       </div>
+      <button class="wide" onclick="openHistory()">今日の自分の移動（取り消し・数量の修正）</button>
     </div>
 
     <div id="step-choose" class="hidden">
-      <h2>④ 同じQRの品目が複数あります。出庫するものを選んでください</h2>
+      <h2>同じQRの品目が複数あります。移動するものを選んでください</h2>
       <div id="choose-buttons"></div>
       <button onclick="backToScan()">別のQRを読み直す</button>
     </div>
 
     <div id="step-item" class="hidden">
-      <h2>④ 品目の確認</h2>
+      <h2>③ 品目を確認して、移動する数量を入れてください</h2>
       <div class="card" id="item-card"></div>
-      <button onclick="backToScan()">別のQRを読み直す</button>
-
-      <h2>⑤ どこの工場へ送りますか</h2>
-      <div id="to-buttons"></div>
+      <input type="number" id="qty-input" min="0" step="any" inputmode="decimal" placeholder="移動する数量">
+      <div id="qty-error" class="error"></div>
+      <button class="primary" onclick="toConfirmShip()">次へ</button>
+      <button class="ghost" onclick="backToScan()">別のQRを読み直す</button>
     </div>
 
-    <div id="step-qty" class="hidden">
-      <h2>⑥ 出庫する数量</h2>
-      <div class="card" id="qty-item-label"></div>
-      <input type="number" id="qty-input" min="1" step="1" inputmode="numeric" placeholder="数量">
-      <div class="small">送り先の工場の在庫も、自動で同じ数量だけ増えます（送り先に品目がない場合は新しく作ります）。</div>
-      <button class="primary" id="ship-btn" onclick="confirmShip()">この内容で出庫する</button>
-      <div id="qty-error" class="error"></div>
-      <button class="ghost" onclick="show('step-item')">やめて戻る</button>
+    <div id="step-confirm" class="hidden">
+      <h2 id="confirm-heading">④ 内容を確認してください</h2>
+      <div class="announce" id="confirm-announce"></div>
+      <div class="card" id="confirm-card"></div>
+      <button class="primary" id="confirm-ok">実行する</button>
+      <button class="wide" onclick="speakAgain()">🔊 もう一度聞く</button>
+      <button class="ghost" id="confirm-cancel">やめて戻る</button>
     </div>
 
     <div id="step-result" class="hidden">
       <h2>結果</h2>
       <div id="result-box" class="card"></div>
       <div class="small" id="result-note"></div>
-      <button class="primary" onclick="resetToScan()">続けて次の品目を出庫する</button>
+      <button class="primary" onclick="resetToScan()">続けて次の品目を移動する</button>
+      <button class="wide hidden" id="result-fix" onclick="openRecord(lastRecord)">いまの移動を取り消す・数量を直す</button>
+      <button class="wide" onclick="openHistory()">今日の自分の移動を見る</button>
       <button class="ghost" onclick="resetAll()">別の作業者に交代する</button>
+    </div>
+
+    <div id="step-history" class="hidden">
+      <h2>今日の自分の移動（タップで取り消し・数量の修正）</h2>
+      <div id="history-list">読み込み中…</div>
+      <button class="wide" onclick="resetToScan()">品物の読み取りに戻る</button>
+    </div>
+
+    <div id="step-record" class="hidden">
+      <h2>移動の記録</h2>
+      <div class="card" id="record-card"></div>
+      <div id="record-actions">
+        <h2>数量を直す</h2>
+        <input type="number" id="fix-qty" min="0" step="any" inputmode="decimal" placeholder="正しい数量">
+        <div id="fix-error" class="error"></div>
+        <button class="primary" onclick="toConfirmCorrect()">この数量に直す</button>
+        <h2>取り消す</h2>
+        <button class="danger" onclick="toConfirmCancel()">この移動を取り消す</button>
+      </div>
+      <button class="ghost" onclick="openHistory()">一覧に戻る</button>
     </div>
 
   </div>
@@ -209,17 +251,28 @@
     /* Apps Scriptを「ウェブアプリ」として公開したときのURL（.../exec） */
     const API_URL = 'https://script.google.com/macros/s/AKfycby4fPD369fS5gT5r7NiyB8u3Ip3NZjSe3t_F3eBPDXwvFR49JJ4fkpEyctRC8b5xIBN/exec';
 
+    /* 読み上げのときの工場名の読み方（漢字のままだと読み間違えることがあるため） */
+    const READINGS = { '戎島': 'えびすじま', '河内長野': 'かわちながの', '日本カラー': 'にほんカラー' };
+    /* 読み上げのときの製品名の読み方（読み方を足したいときは、ここに1行ずつ追加する） */
+    const TITLE_READINGS = [
+      [/BAX/gi, 'ばっくす']
+    ];
+
     let workerToken = null;
-    let fromFactory = null;
+    let route = { from: '', to: '' };
     let currentItem = null;
-    let toFactory = null;
+    let currentRecord = null;
+    let lastRecord = null;
     let scanner = null;       // いま動いているカメラ
     let scanHandled = false;  // 同じQRを何度も読んで二重に処理しないための目印
-    let factoryList = [];
+    let lastSpeech = '';
+
+    const STEPS = ['step-badge', 'step-scan', 'step-choose', 'step-item', 'step-confirm', 'step-result', 'step-history', 'step-record'];
 
     /* ---------------- 起動 ---------------- */
     show('step-badge');
     startBadgeScan();
+    loadRoute();
 
     /* ---------------- APIを呼ぶ共通処理 ---------------- */
     async function callApi(action, params) {
@@ -230,6 +283,37 @@
         body: JSON.stringify(body)
       });
       return res.json();
+    }
+
+    function loadRoute() {
+      callApi('route', {}).then(function (res) {
+        if (!res.ok) { document.getElementById('route-bar').textContent = res.msg; return; }
+        route = { from: res.from, to: res.to };
+        document.getElementById('route-bar').textContent = route.from + ' → ' + route.to + ' の移動';
+      }).catch(function (err) {
+        document.getElementById('route-bar').textContent = '接続先に問題があります（' + err + '）';
+      });
+    }
+
+    /* ---------------- 読み上げ ---------------- */
+    function speak(text) {
+      lastSpeech = text;
+      try {
+        if (!('speechSynthesis' in window)) return;
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'ja-JP';
+        u.rate = 1.0;
+        window.speechSynthesis.speak(u);
+      } catch (e) {}
+    }
+    function speakAgain() { if (lastSpeech) speak(lastSpeech); }
+    function reading(name) { return READINGS[name] || name; }
+    /* 製品名を読み上げ用に直す（「-」は「まいなす」と読まれないよう区切りにする） */
+    function titleReading(title) {
+      let t = String(title || '');
+      TITLE_READINGS.forEach(function (r) { t = t.replace(r[0], r[1]); });
+      return t.replace(/[-－‐]/g, ' ');
     }
 
     /* ---------------- カメラの開始・停止 ---------------- */
@@ -283,43 +367,10 @@
       document.getElementById('manual-badge').value = '';
       document.getElementById('manual-badge-box').classList.add('hidden');
       document.getElementById('badge-mark').classList.remove('hidden');
-      loadFactories();
-      show('step-factory');
-    }
-
-    /* ---------------- ② 工場選択 ---------------- */
-    function loadFactories() {
-      const box = document.getElementById('factory-buttons');
-      box.innerHTML = '読み込み中…';
-      callApi('listFactories', {}).then(function (res) {
-        if (!res.ok) { box.innerHTML = '<div class="error">' + escapeHtml(res.msg) + '</div>'; return; }
-        factoryList = res.factories;
-        box.innerHTML = '';
-        if (factoryList.length === 0) {
-          box.innerHTML = '<div class="error">工場の一覧が未設定です。管理者にご確認ください。</div>';
-          return;
-        }
-        factoryList.forEach(function (name) {
-          const b = document.createElement('button');
-          b.className = 'tile';
-          b.innerHTML = '<span>' + escapeHtml(name) + '</span><span class="arrow">›</span>';
-          b.onclick = function () { selectFromFactory(name); };
-          box.appendChild(b);
-        });
-      }).catch(function (err) {
-        box.innerHTML = '<div class="error">接続先に問題があります。設定を確認してください。（' + escapeHtml(err) + '）</div>';
-      });
-    }
-
-    function selectFromFactory(name) {
-      fromFactory = name;
-      document.getElementById('from-factory-label').textContent = name;
-      document.getElementById('manual-product-box').classList.add('hidden');
       backToScan();
     }
-    function backToFactory() { stopScan(); show('step-factory'); }
 
-    /* ---------------- ③ 品物のQR読み取り ---------------- */
+    /* ---------------- ② 品物のQR読み取り ---------------- */
     function startProductScan() {
       startScan('reader-product', onScan,
         'カメラを使えませんでした。下の「番号を入力する」からお続けください。');
@@ -334,13 +385,9 @@
       if (!code) return;
       stopScan();
       setSearching(true);
-      callApi('lookup', { workerToken: workerToken, code: code, factory: fromFactory }).then(function (res) {
+      callApi('lookup', { workerToken: workerToken, code: code }).then(function (res) {
         setSearching(false);
-        if (!res.ok) {
-          alert(res.msg);
-          if (res.reason === 'badToken') { resetAll(); } else { backToScan(); }
-          return;
-        }
+        if (!res.ok) { handleError(res); return; }
         if (res.items.length === 1) {
           showItem(res.items[0]);
         } else {
@@ -357,11 +404,17 @@
     }
     function backToScan() {
       document.getElementById('manual-product').value = '';
+      document.getElementById('manual-product-box').classList.add('hidden');
       show('step-scan');
       startProductScan();
     }
+    /* エラーを伝えて、バッジの問題ならバッジから、それ以外はQR読み取りからやり直す */
+    function handleError(res) {
+      alert(res.msg);
+      if (res.reason === 'badToken') { resetAll(); } else { backToScan(); }
+    }
 
-    /* ---------------- ④ 同じQRの品目が複数あるときの選択 ---------------- */
+    /* ---------------- 同じQRの品目が複数あるときの選択 ---------------- */
     function showChoices(items) {
       const box = document.getElementById('choose-buttons');
       box.innerHTML = '';
@@ -381,96 +434,195 @@
       return [it.warehouse, it.place].filter(function (s) { return s; }).join(' / ') || '置き場所の登録なし';
     }
 
-    /* ---------------- ④ 品目表示・⑤ 移動先選択 ---------------- */
+    /* ---------------- ③ 品目表示・数量入力 ---------------- */
     function showItem(item) {
       currentItem = item;
-
       document.getElementById('item-card').innerHTML =
         row('製品コード', item.productCode) +
         row('製品名', item.title) +
         row('入目', item.iremono) +
         row('Lot', item.lot) +
         row('置き場所', placeText(item)) +
-        row('在庫数（' + fromFactory + '）', item.quantity);
-
-      const toBox = document.getElementById('to-buttons');
-      toBox.innerHTML = '';
-      factoryList.filter(function (n) { return n !== fromFactory; }).forEach(function (name) {
-        const b = document.createElement('button');
-        b.className = 'tile';
-        b.innerHTML = '<span>' + escapeHtml(name) + ' へ送る</span><span class="arrow">›</span>';
-        b.onclick = function () { selectToFactory(name); };
-        toBox.appendChild(b);
-      });
-
+        row('在庫数（' + route.from + '）', item.quantity);
+      document.getElementById('qty-input').value = '';
+      document.getElementById('qty-error').textContent = '';
       show('step-item');
     }
 
-    function selectToFactory(name) {
-      toFactory = name;
-      document.getElementById('qty-item-label').innerHTML =
-        row('品目', currentItem.title) +
-        row('出庫元', fromFactory) +
-        row('送り先', name) +
-        row('在庫数（' + fromFactory + '）', currentItem.quantity);
-      document.getElementById('qty-input').value = '';
-      document.getElementById('qty-error').textContent = '';
-      show('step-qty');
-    }
-
-    /* ---------------- ⑥ 数量入力・実行 ---------------- */
-    function confirmShip() {
+    function toConfirmShip() {
       const qty = Number(document.getElementById('qty-input').value);
       const errBox = document.getElementById('qty-error');
       errBox.textContent = '';
       if (!(qty > 0)) { errBox.textContent = '数量を入力してください。'; return; }
       if (qty > currentItem.quantity) {
-        errBox.textContent = '在庫（' + currentItem.quantity + '）より多い数量は出庫できません。';
+        errBox.textContent = '在庫（' + currentItem.quantity + '）より多い数量は移動できません。';
         return;
       }
-      if (!confirm(currentItem.title + ' を ' + qty + '\n' + fromFactory + ' → ' + toFactory + '\nこの内容で出庫します。よろしいですか？')) {
-        return;
-      }
-      const btn = document.getElementById('ship-btn');
-      btn.disabled = true;
-      btn.textContent = '出庫しています…';
-      callApi('shipOut', {
-        workerToken: workerToken,
-        fromFactory: fromFactory,
-        toFactory: toFactory,
-        zaicoId: currentItem.zaicoId,
-        qty: qty
-      }).then(function (res) {
-        showResult(res);
-      }).catch(function (err) {
-        showResult({ ok: false, msg: '通信に失敗しました：' + err + '\nZAICOアプリで在庫数が変わっていないか確認してください。' });
-      }).then(function () {
-        btn.disabled = false;
-        btn.textContent = 'この内容で出庫する';
+      showConfirm({
+        heading: '④ 内容を確認してください',
+        announce: '<div class="big">' + escapeHtml(route.from) + ' → ' + escapeHtml(route.to) + '</div>' +
+                  '<div class="mid">に移動します</div>',
+        rows: row('製品名', currentItem.title) +
+              row('Lot', currentItem.lot) +
+              row('移動する数量', qty) +
+              row(route.from + 'の在庫', currentItem.quantity + ' → ' + round4(currentItem.quantity - qty)),
+        okLabel: '移動する',
+        speech: reading(route.from) + 'から、' + reading(route.to) + 'に移動します。' +
+                titleReading(currentItem.title) + '、' + qty + '。よろしければ、移動する、を押してください。',
+        onOk: function (btn) {
+          return callApi('shipOut', { workerToken: workerToken, zaicoId: currentItem.zaicoId, qty: qty })
+            .then(function (res) {
+              lastRecord = res.record || null;
+              showResult(res, '移動しました');
+            });
+        },
+        onCancel: function () { show('step-item'); }
       });
     }
 
-    function showResult(res) {
+    /* ---------------- 確認画面（移動・取り消し・修正で共通） ---------------- */
+    function showConfirm(o) {
+      document.getElementById('confirm-heading').textContent = o.heading;
+      const ann = document.getElementById('confirm-announce');
+      ann.className = 'announce' + (o.danger ? ' danger' : '');
+      ann.innerHTML = o.announce;
+      document.getElementById('confirm-card').innerHTML = o.rows;
+      const ok = document.getElementById('confirm-ok');
+      ok.textContent = o.okLabel;
+      ok.className = o.danger ? 'danger' : 'primary';
+      ok.disabled = false;
+      ok.onclick = function () {
+        ok.disabled = true;
+        ok.textContent = '処理しています…';
+        o.onOk(ok).catch(function (err) {
+          showResult({ ok: false, msg: '通信に失敗しました：' + err + '\nZAICOアプリで在庫数が変わっていないか確認してください。' });
+        });
+      };
+      document.getElementById('confirm-cancel').onclick = function () {
+        try { window.speechSynthesis.cancel(); } catch (e) {}
+        o.onCancel();
+      };
+      show('step-confirm');
+      speak(o.speech);
+    }
+
+    /* ---------------- 結果 ---------------- */
+    function showResult(res, okSpeech) {
       const box = document.getElementById('result-box');
       box.className = 'card ' + (res.ok && !res.warn ? 'ok' : 'error');
       box.textContent = res.msg;
       document.getElementById('result-note').textContent = res.note || '';
+      document.getElementById('result-fix').classList.toggle('hidden', !(res.ok && res.record));
+      if (res.ok && !res.warn) {
+        speak(okSpeech || '完了しました');
+      } else {
+        speak('確認してください。' + (res.ok ? '一部の処理ができませんでした。' : 'できませんでした。'));
+      }
       show('step-result');
+      if (res.reason === 'badToken') { alert(res.msg); resetAll(); }
     }
 
+    /* ---------------- 今日の自分の移動（取り消し・修正） ---------------- */
+    function openHistory() {
+      stopScan();
+      const box = document.getElementById('history-list');
+      box.innerHTML = '読み込み中…';
+      show('step-history');
+      callApi('myToday', { workerToken: workerToken }).then(function (res) {
+        if (!res.ok) { box.innerHTML = '<div class="error">' + escapeHtml(res.msg) + '</div>'; return; }
+        if (res.records.length === 0) { box.innerHTML = '<div class="small">今日の移動はまだありません。</div>'; return; }
+        box.innerHTML = '';
+        res.records.forEach(function (rec) {
+          const b = document.createElement('button');
+          b.className = 'tile' + (rec.state === '取消済' ? ' canceled' : '');
+          b.innerHTML =
+            '<span>' + escapeHtml(rec.time + '　' + rec.title) +
+              '<span class="sub">' + (rec.lot ? 'Lot ' + escapeHtml(rec.lot) + '　' : '') + escapeHtml(rec.state) + '</span></span>' +
+            '<span class="qty">' + escapeHtml(rec.qty) + '</span>';
+          b.onclick = function () { openRecord(rec); };
+          box.appendChild(b);
+        });
+      }).catch(function (err) {
+        box.innerHTML = '<div class="error">通信に失敗しました：' + escapeHtml(err) + '</div>';
+      });
+    }
+
+    function openRecord(rec) {
+      if (!rec) return;
+      stopScan();
+      currentRecord = rec;
+      document.getElementById('record-card').innerHTML =
+        row('時刻', rec.time) +
+        row('移動', rec.from + ' → ' + rec.to) +
+        row('製品名', rec.title) +
+        row('Lot', rec.lot) +
+        row('数量', rec.qty) +
+        row('状態', rec.state) +
+        (rec.history ? row('修正の記録', rec.history) : '');
+      document.getElementById('record-actions').classList.toggle('hidden', rec.state === '取消済');
+      document.getElementById('fix-qty').value = '';
+      document.getElementById('fix-error').textContent = '';
+      show('step-record');
+    }
+
+    function toConfirmCancel() {
+      const rec = currentRecord;
+      showConfirm({
+        heading: '取り消しの確認',
+        danger: true,
+        announce: '<div class="big">取り消します</div>' +
+                  '<div class="mid">' + escapeHtml(rec.to) + ' から ' + escapeHtml(rec.from) + ' に ' + escapeHtml(rec.qty) + ' 戻します</div>',
+        rows: row('製品名', rec.title) + row('Lot', rec.lot) + row('数量', rec.qty) +
+              (rec.destAction === '新規作成' ? row(rec.to + 'の品目', 'この移動で作った品目は削除します') : ''),
+        okLabel: '取り消す',
+        speech: 'この移動を取り消します。' + reading(rec.to) + 'から、' + reading(rec.from) + 'に、' + rec.qty + '戻します。' +
+                'よろしければ、取り消す、を押してください。',
+        onOk: function () {
+          return callApi('cancel', { workerToken: workerToken, recordId: rec.recordId })
+            .then(function (res) { lastRecord = null; showResult(res, '取り消しました'); });
+        },
+        onCancel: function () { show('step-record'); }
+      });
+    }
+
+    function toConfirmCorrect() {
+      const rec = currentRecord;
+      const qty = Number(document.getElementById('fix-qty').value);
+      const errBox = document.getElementById('fix-error');
+      errBox.textContent = '';
+      if (!(qty > 0)) { errBox.textContent = '正しい数量を入力してください。（0にしたいときは「取り消す」を使ってください）'; return; }
+      if (qty === rec.qty) { errBox.textContent = 'いまの数量と同じです。'; return; }
+      const diff = round4(qty - rec.qty);
+      showConfirm({
+        heading: '数量の修正の確認',
+        announce: '<div class="big">' + escapeHtml(rec.qty) + ' → ' + escapeHtml(qty) + '</div>' +
+                  '<div class="mid">に数量を直します</div>',
+        rows: row('製品名', rec.title) + row('Lot', rec.lot) +
+              row(rec.from, diff > 0 ? 'さらに ' + diff + ' 減らす' : (-diff) + ' 戻す') +
+              row(rec.to, diff > 0 ? 'さらに ' + diff + ' 増やす' : (-diff) + ' 減らす'),
+        okLabel: '数量を直す',
+        speech: '数量を、' + rec.qty + 'から、' + qty + 'に直します。よろしければ、数量を直す、を押してください。',
+        onOk: function () {
+          return callApi('correct', { workerToken: workerToken, recordId: rec.recordId, qty: qty })
+            .then(function (res) { lastRecord = null; showResult(res, '数量を直しました'); });
+        },
+        onCancel: function () { show('step-record'); }
+      });
+    }
+
+    /* ---------------- 共通 ---------------- */
     function resetToScan() {
-      currentItem = null; toFactory = null;
+      currentItem = null;
       backToScan();
     }
     function resetAll() {
       stopScan();
-      workerToken = null; fromFactory = null; currentItem = null; toFactory = null;
+      workerToken = null; currentItem = null; currentRecord = null; lastRecord = null;
       document.getElementById('badge-mark').classList.add('hidden');
       show('step-badge');
       startBadgeScan();
     }
-
-    /* ---------------- 共通 ---------------- */
+    function round4(n) { return Math.round(n * 10000) / 10000; }
     function row(label, value) {
       return '<div class="row"><span class="label">' + escapeHtml(label) + '</span><span class="value">' + escapeHtml(value == null ? '' : String(value)) + '</span></div>';
     }
@@ -480,9 +632,10 @@
       });
     }
     function show(id) {
-      ['step-badge', 'step-factory', 'step-scan', 'step-choose', 'step-item', 'step-qty', 'step-result'].forEach(function (s) {
+      STEPS.forEach(function (s) {
         document.getElementById(s).classList.toggle('hidden', s !== id);
       });
+      window.scrollTo(0, 0);
     }
   </script>
 </body>
