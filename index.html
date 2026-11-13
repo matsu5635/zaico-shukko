@@ -139,6 +139,12 @@
 
   #reader-badge, #reader-product { width: 100%; border-radius: 14px; overflow: hidden; border: 1px solid var(--card-border); }
 
+  .modebar { display: flex; gap: 8px; margin: 4px 0 12px; }
+  .modebar button { flex: 1; margin: 0; font-size: 14px; padding: 10px 8px; }
+  .modebar button.on { background: var(--accent); color: #08221a; border-color: var(--accent); font-weight: 700; }
+  .reader-box input[type=text] { font-size: 20px; }
+  .reader-hint { font-size: 13px; color: var(--sub); margin-bottom: 6px; }
+
   .error { color: var(--danger); white-space: pre-wrap; font-size: 14px; }
   .ok { color: var(--accent); white-space: pre-wrap; font-size: 15px; font-weight: 600; }
   .small { font-size: 12px; color: var(--sub); margin-top: 10px; }
@@ -170,22 +176,32 @@
 
     <div id="step-badge" class="hidden">
       <h2>① 自分のバッジ（QR）を読んでください</h2>
+      <div class="modebar">
+        <button id="mode-camera" onclick="setInputMode('camera')">カメラで読む</button>
+        <button id="mode-reader" onclick="setInputMode('reader')">リーダーで読む</button>
+      </div>
       <div id="reader-badge"></div>
-      <button onclick="showManualBadge()">カメラを使わず入力する</button>
-      <div id="manual-badge-box" class="hidden">
-        <input type="text" id="manual-badge" placeholder="バッジのコード" autocomplete="off">
-        <button class="primary" onclick="onBadgeScanned(document.getElementById('manual-badge').value)">これで進む</button>
+      <button id="manual-badge-btn" onclick="showManualBadge()">カメラを使わず入力する</button>
+      <div id="manual-badge-box" class="hidden reader-box">
+        <div class="reader-hint" id="manual-badge-hint">バッジのQRをリーダーで読んでください</div>
+        <input type="text" id="manual-badge" placeholder="バッジのコード" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go">
+        <button class="primary" onclick="submitBadgeInput()">これで進む</button>
       </div>
     </div>
 
     <div id="step-scan" class="hidden">
       <h2>② 移動する品物のQRコードを読み取ってください</h2>
+      <div class="modebar">
+        <button id="mode-camera2" onclick="setInputMode('camera')">カメラで読む</button>
+        <button id="mode-reader2" onclick="setInputMode('reader')">リーダーで読む</button>
+      </div>
       <div id="reader-product"></div>
       <div id="scan-status" class="status hidden">検索しています…</div>
-      <button onclick="showManualProduct()">カメラを使わず番号を入力する</button>
-      <div id="manual-product-box" class="hidden">
-        <input type="text" id="manual-product" placeholder="QRコードの値" autocomplete="off">
-        <button class="primary" onclick="onScan(document.getElementById('manual-product').value)">検索する</button>
+      <button id="manual-product-btn" onclick="showManualProduct()">カメラを使わず番号を入力する</button>
+      <div id="manual-product-box" class="hidden reader-box">
+        <div class="reader-hint" id="manual-product-hint">品物のQRをリーダーで読んでください</div>
+        <input type="text" id="manual-product" placeholder="QRコードの値" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search">
+        <button class="primary" onclick="submitProductInput()">検索する</button>
       </div>
       <button class="wide" onclick="openHistory()">今日の自分の移動（取り消し・数量の修正）</button>
     </div>
@@ -266,12 +282,16 @@
     let scanner = null;       // いま動いているカメラ
     let scanHandled = false;  // 同じQRを何度も読んで二重に処理しないための目印
     let lastSpeech = '';
+    let inputMode = 'camera';   // 'camera'＝カメラで読む／'reader'＝ハンディターミナル等のリーダーで読む
 
     const STEPS = ['step-badge', 'step-scan', 'step-choose', 'step-item', 'step-confirm', 'step-result', 'step-history', 'step-record'];
 
     /* ---------------- 起動 ---------------- */
+    try { inputMode = localStorage.getItem('zaicoInputMode') || 'camera'; } catch (e) {}
+    setupReaderInput('manual-badge', submitBadgeInput);
+    setupReaderInput('manual-product', submitProductInput);
     show('step-badge');
-    startBadgeScan();
+    applyInputMode();
     loadRoute();
 
     /* ---------------- APIを呼ぶ共通処理 ---------------- */
@@ -350,14 +370,94 @@
       });
     }
 
+    /* ---------------- 読み取り方法（カメラ／リーダー）の切り替え ---------------- */
+    function setInputMode(mode) {
+      inputMode = mode;
+      try { localStorage.setItem('zaicoInputMode', mode); } catch (e) {}
+      applyInputMode();
+    }
+
+    /* いまの画面に、選ばれている読み取り方法を反映する */
+    function applyInputMode() {
+      const reader = (inputMode === 'reader');
+      [['mode-camera', !reader], ['mode-reader', reader],
+       ['mode-camera2', !reader], ['mode-reader2', reader]].forEach(function (x) {
+        const el = document.getElementById(x[0]);
+        if (el) el.classList.toggle('on', x[1]);
+      });
+      const onBadge = !document.getElementById('step-badge').classList.contains('hidden');
+      const onScanStep = !document.getElementById('step-scan').classList.contains('hidden');
+      if (!onBadge && !onScanStep) return;
+
+      const idBox = onBadge ? 'manual-badge-box' : 'manual-product-box';
+      const idBtn = onBadge ? 'manual-badge-btn' : 'manual-product-btn';
+      const idCam = onBadge ? 'reader-badge' : 'reader-product';
+      const idInput = onBadge ? 'manual-badge' : 'manual-product';
+
+      if (reader) {
+        // リーダーで読む：カメラは止めて、入力欄を出してカーソルを合わせる
+        stopScan();
+        document.getElementById(idCam).classList.add('hidden');
+        document.getElementById(idBtn).classList.add('hidden');
+        document.getElementById(idBox).classList.remove('hidden');
+        focusReaderInput(idInput);
+      } else {
+        document.getElementById(idCam).classList.remove('hidden');
+        document.getElementById(idBtn).classList.remove('hidden');
+        document.getElementById(idBox).classList.add('hidden');
+        if (onBadge) { startBadgeScan(); } else { startProductScan(); }
+      }
+    }
+
+    function focusReaderInput(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.value = '';
+      setTimeout(function () { try { el.focus(); } catch (e) {} }, 60);
+    }
+
+    /* リーダーからの入力を受け取る仕掛け
+     * ・Enter（多くのリーダーが読み取りの最後に送る）で確定する
+     * ・Enterを送らないリーダーもあるので、文字が一気に入って止まったときも確定する
+     * ・人が手で打つ速さでは勝手に確定しない（ボタンで確定する） */
+    function setupReaderInput(id, submitFn) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      let burstStart = 0, timer = null;
+      el.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.keyCode === 13) {
+          e.preventDefault();
+          if (timer) { clearTimeout(timer); timer = null; }
+          submitFn();
+        }
+      });
+      el.addEventListener('input', function () {
+        const now = Date.now();
+        if (!burstStart || now - burstStart > 1500) burstStart = now;
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(function () {
+          timer = null;
+          const v = el.value.trim();
+          const perChar = v.length ? (Date.now() - burstStart) / v.length : 999;
+          burstStart = 0;
+          // 1文字あたり60ミリ秒より速く入ったものは、リーダーの読み取りとみなす
+          if (v.length >= 3 && perChar < 60) submitFn();
+        }, 300);
+      });
+    }
+
+    function submitBadgeInput() { onBadgeScanned(document.getElementById('manual-badge').value); }
+    function submitProductInput() { onScan(document.getElementById('manual-product').value); }
+
     /* ---------------- ① バッジを読む ---------------- */
     function startBadgeScan() {
       startScan('reader-badge', onBadgeScanned,
-        'カメラを使えませんでした。下の「入力する」からお続けください。');
+        'カメラを使えませんでした。上の「リーダーで読む」からお続けください。');
     }
     function showManualBadge() {
       stopScan();
       document.getElementById('manual-badge-box').classList.remove('hidden');
+      focusReaderInput('manual-badge');
     }
     function onBadgeScanned(token) {
       token = String(token || '').trim();
@@ -365,19 +465,21 @@
       stopScan();
       workerToken = token;
       document.getElementById('manual-badge').value = '';
-      document.getElementById('manual-badge-box').classList.add('hidden');
+      if (inputMode !== 'reader') document.getElementById('manual-badge-box').classList.add('hidden');
       document.getElementById('badge-mark').classList.remove('hidden');
       backToScan();
     }
 
     /* ---------------- ② 品物のQR読み取り ---------------- */
     function startProductScan() {
+      if (inputMode === 'reader') { focusReaderInput('manual-product'); return; }
       startScan('reader-product', onScan,
-        'カメラを使えませんでした。下の「番号を入力する」からお続けください。');
+        'カメラを使えませんでした。上の「リーダーで読む」からお続けください。');
     }
     function showManualProduct() {
       stopScan();
       document.getElementById('manual-product-box').classList.remove('hidden');
+      focusReaderInput('manual-product');
     }
 
     function onScan(code) {
@@ -404,9 +506,9 @@
     }
     function backToScan() {
       document.getElementById('manual-product').value = '';
-      document.getElementById('manual-product-box').classList.add('hidden');
+      if (inputMode !== 'reader') document.getElementById('manual-product-box').classList.add('hidden');
       show('step-scan');
-      startProductScan();
+      applyInputMode();
     }
     /* エラーを伝えて、バッジの問題ならバッジから、それ以外はQR読み取りからやり直す */
     function handleError(res) {
@@ -620,7 +722,7 @@
       workerToken = null; currentItem = null; currentRecord = null; lastRecord = null;
       document.getElementById('badge-mark').classList.add('hidden');
       show('step-badge');
-      startBadgeScan();
+      applyInputMode();
     }
     function round4(n) { return Math.round(n * 10000) / 10000; }
     function row(label, value) {
