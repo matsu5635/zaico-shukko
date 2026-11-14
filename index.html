@@ -184,8 +184,9 @@
       <button id="manual-badge-btn" onclick="showManualBadge()">カメラを使わず入力する</button>
       <div id="manual-badge-box" class="hidden reader-box">
         <div class="reader-hint" id="manual-badge-hint">バッジのQRをリーダーで読んでください</div>
-        <input type="text" id="manual-badge" placeholder="バッジのコード" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go">
+        <input type="text" id="manual-badge" placeholder="バッジのコード" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go" inputmode="none">
         <button class="primary" onclick="submitBadgeInput()">これで進む</button>
+        <button class="ghost" onclick="showKeyboard('manual-badge')">キーボードを出して手で入力する</button>
       </div>
     </div>
 
@@ -200,8 +201,9 @@
       <button id="manual-product-btn" onclick="showManualProduct()">カメラを使わず番号を入力する</button>
       <div id="manual-product-box" class="hidden reader-box">
         <div class="reader-hint" id="manual-product-hint">品物のQRをリーダーで読んでください</div>
-        <input type="text" id="manual-product" placeholder="QRコードの値" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search">
+        <input type="text" id="manual-product" placeholder="QRコードの値" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search" inputmode="none">
         <button class="primary" onclick="submitProductInput()">検索する</button>
+        <button class="ghost" onclick="showKeyboard('manual-product')">キーボードを出して手で入力する</button>
       </div>
       <button class="wide" onclick="openHistory()">今日の自分の移動（取り消し・数量の修正）</button>
     </div>
@@ -413,7 +415,18 @@
       const el = document.getElementById(id);
       if (!el) return;
       el.value = '';
+      // リーダーで読むときは、画面キーボードを出さない（リーダーからの文字は今までどおり入る）
+      el.setAttribute('inputmode', 'none');
       setTimeout(function () { try { el.focus(); } catch (e) {} }, 60);
+    }
+
+    /* 手で打ちたいときだけ、画面キーボードを出す */
+    function showKeyboard(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.setAttribute('inputmode', 'text');
+      el.blur();
+      setTimeout(function () { try { el.focus(); el.click(); } catch (e) {} }, 60);
     }
 
     /* リーダーからの入力を受け取る仕掛け
