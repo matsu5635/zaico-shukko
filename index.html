@@ -686,11 +686,11 @@
         heading: '取り消しの確認',
         danger: true,
         announce: '<div class="big">取り消します</div>' +
-                  '<div class="mid">' + escapeHtml(rec.to) + ' から ' + escapeHtml(rec.from) + ' に ' + escapeHtml(rec.qty) + ' 戻します</div>',
+                  '<div class="mid">' + escapeHtml(rec.from) + ' の在庫に ' + escapeHtml(rec.qty) + ' 戻します</div>',
         rows: row('製品名', rec.title) + row('Lot', rec.lot) + row('数量', rec.qty) +
-              (rec.destAction === '新規作成' ? row(rec.to + 'の品目', 'この移動で作った品目は削除します') : ''),
+              (rec.destAction === '新規作成' ? row(rec.to + 'の品目', 'まだ入庫されていなければ削除します') : ''),
         okLabel: '取り消す',
-        speech: 'この移動を取り消します。' + reading(rec.to) + 'から、' + reading(rec.from) + 'に、' + rec.qty + '戻します。' +
+        speech: 'この移動を取り消します。' + reading(rec.from) + 'の在庫に、' + rec.qty + '戻します。' +
                 'よろしければ、取り消す、を押してください。',
         onOk: function () {
           return callApi('cancel', { workerToken: workerToken, recordId: rec.recordId })
@@ -714,7 +714,7 @@
                   '<div class="mid">に数量を直します</div>',
         rows: row('製品名', rec.title) + row('Lot', rec.lot) +
               row(rec.from, diff > 0 ? 'さらに ' + diff + ' 減らす' : (-diff) + ' 戻す') +
-              row(rec.to, diff > 0 ? 'さらに ' + diff + ' 増やす' : (-diff) + ' 減らす'),
+              row(rec.to, '変わりません'),
         okLabel: '数量を直す',
         speech: '数量を、' + rec.qty + 'から、' + qty + 'に直します。よろしければ、数量を直す、を押してください。',
         onOk: function () {
